@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "685375118117",
+    "project_id": "booktalk-82397",
+    "storage_bucket": "booktalk-82397.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:685375118117:android:1046bec1975d63b07c18cc",
+        "android_client_info": {
+          "package_name": "com.booktalk"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "685375118117-0l4f8j9fjvm6up23lg93vkfql8q1dvtp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.booktalk",
+            "certificate_hash": "2abd27e143f17cb41a70ac1dca66a8d256c906ed"
+          }
+        },
+        {
+          "client_id": "685375118117-0p8rfl1chhtham11ter4bkse6abpcqui.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAdjId-NtuGMYUtGIcsdy065ARq1Khccsc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "685375118117-0p8rfl1chhtham11ter4bkse6abpcqui.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
