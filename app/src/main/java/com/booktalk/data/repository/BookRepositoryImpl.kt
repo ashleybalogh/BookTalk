@@ -1,68 +1,105 @@
 package com.booktalk.data.repository
 
-import com.booktalk.data.local.entity.ReadingStatus
+import androidx.paging.PagingData
+import com.booktalk.data.local.dao.BookDao
+import com.booktalk.data.local.dao.UserBookDao
 import com.booktalk.data.local.entity.UserBookEntity
-import com.booktalk.data.remote.exception.ApiException
-import com.booktalk.data.source.local.LocalBookDataSource
+import com.booktalk.data.mapper.toBook
+import com.booktalk.data.mapper.toBookEntity
 import com.booktalk.data.source.remote.RemoteBookDataSource
 import com.booktalk.domain.model.book.Book
+import com.booktalk.domain.model.book.ReadingStatus
 import com.booktalk.domain.repository.BookRepository
 import com.booktalk.domain.util.NetworkResult
 import kotlinx.coroutines.flow.*
 import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
 class BookRepositoryImpl @Inject constructor(
-    private val localDataSource: LocalBookDataSource,
+    private val bookDao: BookDao,
+    private val userBookDao: UserBookDao,
     private val remoteDataSource: RemoteBookDataSource
 ) : BookRepository {
 
     override suspend fun getAllBooks(): Flow<NetworkResult<List<Book>>> = flow {
         emit(NetworkResult.loading())
         try {
-            val books = localDataSource.getAllBooks()
-            emit(NetworkResult.success(books))
+            val remoteBooks = remoteDataSource.getAllBooks()
+            bookDao.insertBooks(remoteBooks.map { it.toBookEntity() })
+            emit(NetworkResult.success(remoteBooks))
         } catch (e: Exception) {
-            emit(NetworkResult.error(error = e, message = e.message))
+            val localBooks = bookDao.getAllBooks().map { it.toBook() }
+            if (localBooks.isNotEmpty()) {
+                emit(NetworkResult.success(localBooks))
+            } else {
+                emit(NetworkResult.error(e.message ?: "Failed to load books"))
+            }
         }
     }
 
     override suspend fun searchBooks(query: String): Flow<NetworkResult<List<Book>>> = flow {
         emit(NetworkResult.loading())
         try {
-            val books = localDataSource.searchBooks(query)
-            emit(NetworkResult.success(books))
+            val searchResults = remoteDataSource.searchBooks(query)
+            emit(NetworkResult.success(searchResults))
         } catch (e: Exception) {
-            emit(NetworkResult.error(error = e, message = e.message))
+            emit(NetworkResult.error(e.message ?: "Failed to search books"))
         }
     }
 
-    override suspend fun getBookById(bookId: String): Flow<NetworkResult<Book>> = flow {
+    override fun getSearchBooksPagingFlow(query: String): Flow<PagingData<Book>> {
+        return remoteDataSource.getSearchBooksPagingFlow(query)
+    }
+
+    override fun getCategoryBooksPagingFlow(category: String): Flow<PagingData<Book>> {
+        return remoteDataSource.getCategoryBooksPagingFlow(category)
+    }
+
+    override suspend fun getBookById(id: String): Flow<NetworkResult<Book>> = flow {
         emit(NetworkResult.loading())
         try {
-            val book = localDataSource.getBookById(bookId)
-            if (book != null) {
-                emit(NetworkResult.success(book))
+            val remoteBook = remoteDataSource.getBookById(id)
+            if (remoteBook != null) {
+                bookDao.insertBook(remoteBook.toBookEntity())
+                emit(NetworkResult.success(remoteBook))
             } else {
-                emit(NetworkResult.error(message = "Book not found"))
+                val localBook = bookDao.getBookById(id)?.toBook()
+                if (localBook != null) {
+                    emit(NetworkResult.success(localBook))
+                } else {
+                    emit(NetworkResult.error("Book not found"))
+                }
             }
         } catch (e: Exception) {
-            emit(NetworkResult.error(error = e, message = e.message))
+            val localBook = bookDao.getBookById(id)?.toBook()
+            if (localBook != null) {
+                emit(NetworkResult.success(localBook))
+            } else {
+                emit(NetworkResult.error(e.message ?: "Failed to get book"))
+            }
         }
     }
 
     override suspend fun getBookByIsbn(isbn: String): Flow<NetworkResult<Book>> = flow {
         emit(NetworkResult.loading())
         try {
-            val book = localDataSource.getBookById(isbn) // We'll use local first, then remote if not found
-            emit(NetworkResult.success(book))
-        } catch (e: Exception) {
-            try {
-                val remoteBook = remoteDataSource.getBookById(isbn)
+            val remoteBook = remoteDataSource.getBookByIsbn(isbn)
+            if (remoteBook != null) {
+                bookDao.insertBook(remoteBook.toBookEntity())
                 emit(NetworkResult.success(remoteBook))
-            } catch (e: Exception) {
-                emit(NetworkResult.error(error = e, message = e.message))
+            } else {
+                val localBook = bookDao.getBookByIsbn(isbn)?.toBook()
+                if (localBook != null) {
+                    emit(NetworkResult.success(localBook))
+                } else {
+                    emit(NetworkResult.error("Book not found"))
+                }
+            }
+        } catch (e: Exception) {
+            val localBook = bookDao.getBookByIsbn(isbn)?.toBook()
+            if (localBook != null) {
+                emit(NetworkResult.success(localBook))
+            } else {
+                emit(NetworkResult.error(e.message ?: "Failed to get book"))
             }
         }
     }
@@ -70,94 +107,75 @@ class BookRepositoryImpl @Inject constructor(
     override suspend fun getBooksByCategory(category: String): Flow<NetworkResult<List<Book>>> = flow {
         emit(NetworkResult.loading())
         try {
-            val books = localDataSource.getBooksByCategory(category)
-            emit(NetworkResult.success(books))
+            val remoteBooks = remoteDataSource.getBooksByCategory(category)
+            emit(NetworkResult.success(remoteBooks))
         } catch (e: Exception) {
-            try {
-                val remoteBooks = remoteDataSource.getBooksByCategory(category)
-                emit(NetworkResult.success(remoteBooks))
-            } catch (e: Exception) {
-                emit(NetworkResult.error(error = e, message = e.message))
+            emit(NetworkResult.error(e.message ?: "Failed to get books by category"))
+        }
+    }
+
+    override suspend fun getUserBooks(userId: String): Flow<List<Book>> {
+        return userBookDao.getUserBooks(userId)
+            .map { userBooks ->
+                userBooks.mapNotNull { userBook ->
+                    bookDao.getBookById(userBook.bookId)?.toBook()
+                }
             }
-        }
     }
 
-    override suspend fun insertBook(book: Book) {
-        localDataSource.saveBook(book)
-    }
-
-    override suspend fun insertBooks(books: List<Book>) {
-        localDataSource.saveBooks(books)
-    }
-
-    override suspend fun updateBook(book: Book) {
-        localDataSource.updateBook(book)
-    }
-
-    override suspend fun deleteBook(book: Book) {
-        localDataSource.deleteBook(book)
-    }
-
-    override fun getUserBooks(userId: String): Flow<List<UserBookEntity>> =
-        localDataSource.getUserBooks(userId)
-
-    override fun getUserBooksByStatus(userId: String, status: ReadingStatus): Flow<List<UserBookEntity>> =
-        localDataSource.getUserBooksByStatus(userId, status)
-
-    override suspend fun getUserBook(userId: String, bookId: String): UserBookEntity? =
-        localDataSource.getUserBook(userId, bookId)
-
-    override suspend fun insertUserBook(userBook: UserBookEntity) {
-        localDataSource.insertUserBook(userBook)
-    }
-
-    override suspend fun updateUserBook(userBook: UserBookEntity) {
-        localDataSource.updateUserBook(userBook)
-    }
-
-    override suspend fun deleteUserBook(userBook: UserBookEntity) {
-        localDataSource.deleteUserBook(userBook)
-    }
-
-    override fun getCurrentlyReading(userId: String): Flow<List<UserBookEntity>> =
-        getUserBooksByStatus(userId, ReadingStatus.READING)
-
-    override fun getFinishedBooks(userId: String): Flow<List<UserBookEntity>> =
-        localDataSource.getUserBooksByStatus(userId, ReadingStatus.FINISHED)
-
-    override suspend fun getReadingList(): Flow<NetworkResult<List<Book>>> = flow {
-        emit(NetworkResult.loading())
-        try {
-            val books = localDataSource.getAllBooks()
-            emit(NetworkResult.success(books))
-        } catch (e: Exception) {
-            emit(NetworkResult.error(error = e, message = e.message))
-        }
+    override suspend fun getUserBooksByStatus(userId: String, status: ReadingStatus): Flow<List<Book>> {
+        return userBookDao.getUserBooksByStatus(userId, status)
+            .map { userBooks ->
+                userBooks.mapNotNull { userBook ->
+                    bookDao.getBookById(userBook.bookId)?.toBook()
+                }
+            }
     }
 
     override suspend fun updateReadingProgress(userId: String, bookId: String, currentPage: Int, totalPages: Int) {
-        val userBook = getUserBook(userId, bookId)
-        userBook?.let {
-            val newStatus = when {
-                currentPage >= totalPages -> ReadingStatus.FINISHED
-                currentPage > 0 -> ReadingStatus.READING
-                else -> it.status // Keep current status if no progress
-            }
-
-            val updatedUserBook = it.copy(
-                currentPage = currentPage,
-                totalPages = totalPages,
-                status = newStatus,
-                startDate = if (newStatus == ReadingStatus.READING && it.startDate == null)
-                    System.currentTimeMillis() else it.startDate,
-                finishDate = if (newStatus == ReadingStatus.FINISHED)
-                    System.currentTimeMillis() else null
-            )
-            updateUserBook(updatedUserBook)
-        }
+        userBookDao.updateReadingProgress(userId, bookId, currentPage, totalPages)
     }
 
-    override suspend fun clearCache() {
-        localDataSource.clearCache()
+    override suspend fun updateBookStatus(userId: String, bookId: String, status: ReadingStatus) {
+        val userBook = userBookDao.getUserBook(userId, bookId) ?: UserBookEntity(
+            userId = userId,
+            bookId = bookId,
+            status = status
+        )
+        userBookDao.insertUserBook(userBook.copy(status = status))
+    }
+
+    override suspend fun rateBook(userId: String, bookId: String, rating: Float) {
+        val userBook = userBookDao.getUserBook(userId, bookId) ?: UserBookEntity(
+            userId = userId,
+            bookId = bookId
+        )
+        userBookDao.insertUserBook(userBook.copy(rating = rating))
+    }
+
+    override suspend fun addBookNote(userId: String, bookId: String, note: String) {
+        val userBook = userBookDao.getUserBook(userId, bookId) ?: UserBookEntity(
+            userId = userId,
+            bookId = bookId
+        )
+        userBookDao.insertUserBook(userBook.copy(notes = note))
+    }
+
+    override suspend fun getCurrentlyReading(userId: String): Flow<List<Book>> {
+        return userBookDao.getCurrentlyReading(userId)
+            .map { userBooks ->
+                userBooks.mapNotNull { userBook ->
+                    bookDao.getBookById(userBook.bookId)?.toBook()
+                }
+            }
+    }
+
+    override suspend fun getFinishedBooks(userId: String): Flow<List<Book>> {
+        return userBookDao.getFinishedBooks(userId)
+            .map { userBooks ->
+                userBooks.mapNotNull { userBook ->
+                    bookDao.getBookById(userBook.bookId)?.toBook()
+                }
+            }
     }
 }

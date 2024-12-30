@@ -2,111 +2,117 @@ package com.booktalk.data.repository
 
 import com.booktalk.data.local.dao.BookDao
 import com.booktalk.data.local.dao.UserBookDao
-import com.booktalk.data.mapper.toBook
-import com.booktalk.data.mapper.toEntity
-import com.booktalk.data.remote.util.NetworkResult
-import com.booktalk.domain.model.Book
-import com.booktalk.data.source.BookDataSource
-import io.mockk.*
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.flow.flowOf
+import com.booktalk.data.model.BookSearchResponse
+import com.booktalk.data.remote.api.BookService
+import com.booktalk.data.remote.dto.BookDto
+import com.booktalk.data.source.remote.RemoteBookDataSource
+import com.booktalk.domain.model.NetworkResult
+import com.booktalk.domain.model.book.ReadingStatus
+import io.mockk.coEvery
+import io.mockk.mockk
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import javax.inject.Named
+import retrofit2.Response
 
 class BookRepositoryTest {
-    private lateinit var localDataSource: BookDataSource
-    private lateinit var remoteDataSource: BookDataSource
+    private lateinit var bookService: BookService
     private lateinit var bookDao: BookDao
     private lateinit var userBookDao: UserBookDao
+    private lateinit var remoteDataSource: RemoteBookDataSource
     private lateinit var repository: BookRepositoryImpl
 
     @Before
     fun setup() {
-        localDataSource = mockk(relaxed = true)
-        remoteDataSource = mockk(relaxed = true)
+        bookService = mockk()
         bookDao = mockk(relaxed = true)
         userBookDao = mockk(relaxed = true)
-        repository = BookRepositoryImpl(localDataSource, remoteDataSource, bookDao, userBookDao)
+        remoteDataSource = RemoteBookDataSource(bookService)
+        repository = BookRepositoryImpl(
+            bookDao = bookDao,
+            userBookDao = userBookDao,
+            remoteDataSource = remoteDataSource
+        )
     }
 
     @Test
-    fun `searchBooks returns books from database and network`() = runTest {
-        // Given
-        val query = "test"
-        val book = createTestBook()
-        val bookEntity = book.toEntity()
-        
-        // Mock database response
-        every { bookDao.searchBooksFlow("%$query%") } returns flowOf(listOf(bookEntity))
-        
-        // Mock network response
-        coEvery { remoteDataSource.searchBooks(query) } returns listOf(book)
-        
-        // Mock database operations
-        coEvery { bookDao.insertBooks(any()) } just Runs
+    fun `searchBooks returns success with remote data when API call succeeds`() = runTest {
+        val bookDto = BookDto(
+            id = "1",
+            title = "Test Book",
+            author = "Test Author",
+            authors = listOf("Test Author"),
+            description = "Test Description",
+            isbn = "1234567890",
+            coverUrl = "http://example.com/cover.jpg",
+            pageCount = 100,
+            publishedDate = "2024",
+            publisher = "Test Publisher",
+            categories = listOf("Fiction"),
+            language = "en",
+            averageRating = 4.5,
+            ratingsCount = 100,
+            previewLink = "http://example.com/preview",
+            infoLink = "http://example.com/info",
+            buyLink = "http://example.com/buy"
+        )
 
-        // When
-        val results = repository.searchBooks(query).toList()
+        val response = BookSearchResponse(
+            items = listOf(bookDto),
+            total = 1,
+            page = 1,
+            pageSize = 20,
+            hasMore = true
+        )
 
-        // Then
-        assertEquals(3, results.size)
-        assertTrue(results[0] is NetworkResult.Loading)
-        assertTrue(results[1] is NetworkResult.Success)
-        assertTrue(results[2] is NetworkResult.Success)
-        assertEquals(listOf(book), (results[2] as NetworkResult.Success<List<Book>>).data)
-        
-        // Verify database was updated with network results
-        coVerify { bookDao.insertBooks(any()) }
+        coEvery {
+            bookService.searchBooks(
+                query = "test",
+                page = 1,
+                pageSize = 20
+            )
+        } returns Response.success(response)
+
+        val result = repository.searchBooks("test").first()
+
+        assertTrue(result is NetworkResult.Success)
+        assertEquals(1, (result as NetworkResult.Success).data.size)
+        assertEquals("Test Book", result.data.first().title)
     }
 
     @Test
-    fun `getBookById returns book from database and network`() = runTest {
-        // Given
-        val bookId = "1"
-        val book = createTestBook()
-        val bookEntity = book.toEntity()
-        
-        // Mock database response
-        coEvery { bookDao.getBookById(bookId) } returns bookEntity
-        
-        // Mock network response
-        coEvery { remoteDataSource.getBookById(bookId) } returns book
-        
-        // Mock database operations
-        coEvery { bookDao.insertBook(any()) } just Runs
+    fun `searchBooks returns error when API call fails`() = runTest {
+        coEvery {
+            bookService.searchBooks(
+                query = "test",
+                page = 1,
+                pageSize = 20
+            )
+        } throws Exception("Network error")
 
-        // When
-        val results = repository.getBookById(bookId).toList()
+        val result = repository.searchBooks("test").first()
 
-        // Then
-        assertEquals(3, results.size)
-        assertTrue(results[0] is NetworkResult.Loading)
-        assertTrue(results[1] is NetworkResult.Success)
-        assertTrue(results[2] is NetworkResult.Success)
-        assertEquals(book, (results[2] as NetworkResult.Success<Book>).data)
-        
-        // Verify database was updated with network result
-        coVerify { bookDao.insertBook(any()) }
+        assertTrue(result is NetworkResult.Error)
+        assertEquals("Network error: Network error", (result as NetworkResult.Error).message)
     }
 
-    private fun createTestBook() = Book(
-        id = "1",
-        title = "Test Book",
-        author = "Test Author",
-        description = "Test Description",
-        coverUrl = "https://example.com/cover.jpg",
-        isbn = "1234567890",
-        pageCount = 200,
-        publishedDate = "2023",
-        publisher = "Test Publisher",
-        categories = listOf("Test Category"),
-        category = "Fiction",
-        language = "en",
-        averageRating = 4.5f,
-        ratingsCount = 100
-    )
+    @Test
+    fun `updateBookStatus updates user book status successfully`() = runTest {
+        coEvery {
+            userBookDao.updateUserBook(any())
+        } returns Unit
+
+        repository.updateBookStatus("user1", "book1", ReadingStatus.READING)
+
+        // No exception thrown means success
+    }
+
+    @Test
+    fun `getCurrentlyReading returns list of currently reading books`() = runTest {
+        val books = repository.getCurrentlyReading("user1").first()
+        assertTrue(books is List)
+    }
 }

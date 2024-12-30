@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 3,
-    "identityHash": "d5df35317752c1fb9699422a16df3e2f",
+    "identityHash": "c77b091878080ceec3308e1d88e3c692",
     "entities": [
       {
         "tableName": "books",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `authors` TEXT NOT NULL, `description` TEXT, `imageUrl` TEXT, `pageCount` INTEGER, `publishedDate` TEXT, `publisher` TEXT, `categories` TEXT NOT NULL, `language` TEXT, `previewLink` TEXT, `infoLink` TEXT, `maturityRating` TEXT, `averageRating` REAL NOT NULL, `ratingsCount` INTEGER NOT NULL, `reviewCount` INTEGER NOT NULL, `popularity` REAL NOT NULL, `keywords` TEXT NOT NULL, `similarBooks` TEXT NOT NULL, `status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `author` TEXT NOT NULL, `description` TEXT, `coverUrl` TEXT, `isbn` TEXT, `pageCount` INTEGER, `publishedDate` TEXT, `publisher` TEXT, `categories` TEXT NOT NULL, `category` TEXT, `language` TEXT, `averageRating` REAL NOT NULL, `ratingsCount` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -21,8 +21,8 @@
             "notNull": true
           },
           {
-            "fieldPath": "authors",
-            "columnName": "authors",
+            "fieldPath": "author",
+            "columnName": "author",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -33,8 +33,14 @@
             "notNull": false
           },
           {
-            "fieldPath": "imageUrl",
-            "columnName": "imageUrl",
+            "fieldPath": "coverUrl",
+            "columnName": "coverUrl",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isbn",
+            "columnName": "isbn",
             "affinity": "TEXT",
             "notNull": false
           },
@@ -63,26 +69,14 @@
             "notNull": true
           },
           {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
             "fieldPath": "language",
             "columnName": "language",
-            "affinity": "TEXT",
-            "notNull": false
-          },
-          {
-            "fieldPath": "previewLink",
-            "columnName": "previewLink",
-            "affinity": "TEXT",
-            "notNull": false
-          },
-          {
-            "fieldPath": "infoLink",
-            "columnName": "infoLink",
-            "affinity": "TEXT",
-            "notNull": false
-          },
-          {
-            "fieldPath": "maturityRating",
-            "columnName": "maturityRating",
             "affinity": "TEXT",
             "notNull": false
           },
@@ -96,36 +90,6 @@
             "fieldPath": "ratingsCount",
             "columnName": "ratingsCount",
             "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "reviewCount",
-            "columnName": "reviewCount",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "popularity",
-            "columnName": "popularity",
-            "affinity": "REAL",
-            "notNull": true
-          },
-          {
-            "fieldPath": "keywords",
-            "columnName": "keywords",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "similarBooks",
-            "columnName": "similarBooks",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "status",
-            "columnName": "status",
-            "affinity": "TEXT",
             "notNull": true
           },
           {
@@ -263,7 +227,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd5df35317752c1fb9699422a16df3e2f')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c77b091878080ceec3308e1d88e3c692')"
     ]
   }
 }

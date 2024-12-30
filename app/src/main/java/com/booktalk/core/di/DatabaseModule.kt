@@ -25,7 +25,6 @@ object DatabaseModule {
             BookTalkDatabase::class.java,
             BookTalkDatabase.DATABASE_NAME
         )
-        .addMigrations(*BookTalkDatabase.MIGRATIONS)
         .build()
     }
 

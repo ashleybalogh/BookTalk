@@ -60,6 +60,17 @@
 -keep class javax.inject.** { *; }
 -keep class * extends dagger.hilt.android.lifecycle.HiltViewModel
 
+# Keep Hilt Modules and Components
+-keep class * extends dagger.Module { *; }
+-keep class * extends dagger.hilt.InstallIn { *; }
+-keep @dagger.Module class * { *; }
+-keep @dagger.hilt.InstallIn class * { *; }
+
+# Keep Mock implementations
+-keep class com.booktalk.data.repository.mock.** { *; }
+-keep class com.booktalk.di.Mock { *; }
+-keep @com.booktalk.di.Mock class * { *; }
+
 # Firebase
 -keep class com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }
@@ -100,6 +111,23 @@
 # Auth0 JWT Library
 -keep class com.auth0.android.** { *; }
 
+# Keep Qualifier annotations
+-keepattributes *Annotation*
+-keepclassmembers @javax.inject.Qualifier class * { *; }
+-keepclassmembers @dagger.Qualifier class * { *; }
+-keepclassmembers @javax.inject.Scope class * { *; }
+-keepclassmembers @dagger.Scope class * { *; }
+
+# Keep injection methods
+-keepclassmembers class * {
+    @javax.inject.Inject <init>(...);
+    @javax.inject.Inject <fields>;
+    @javax.inject.Inject <methods>;
+}
+
+# Keep BuildConfig for debug checks
+-keep class com.booktalk.BuildConfig { *; }
+
 # Security
 -keep class androidx.security.crypto.** { *; }
 -keep class com.google.crypto.tink.** { *; }
@@ -107,7 +135,19 @@
 
 # Compose
 -keep class androidx.compose.** { *; }
+-keepclassmembers class androidx.compose.** { *; }
+-keep class androidx.compose.ui.** { *; }
+-keep class androidx.compose.material3.** { *; }
+-keep class androidx.compose.foundation.** { *; }
+-keep class androidx.compose.animation.** { *; }
 -dontwarn androidx.compose.**
+
+# Keep generic type information for Compose
+-keepattributes Signature
+-keepattributes InnerClasses
+-keepattributes EnclosingMethod
+-keepattributes *Annotation*
+-keep class * extends androidx.compose.runtime.internal.ComposableCallable { *; }
 
 # Debugging - remove these in production if size is an issue
 -keepattributes LocalVariableTable,LocalVariableTypeTable

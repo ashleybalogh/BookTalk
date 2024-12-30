@@ -147,38 +147,55 @@ Earn Achievements -> Complete Challenge
 - Architecture: MVVM + Clean Architecture
 
 ### Technical Architecture Components
-1. **Data Layer**
-   ```kotlin
-   // Core Database
-   @Database(
-       entities = [
-           BookEntity::class,
-           UserBookEntity::class
-       ],
-       version = 2
-   )
-   abstract class BookTalkDatabase : RoomDatabase() {
-       abstract fun bookDao(): BookDao
-       abstract fun userBookDao(): UserBookDao
-   }
 
-   // Entity Relationships
+### Data Layer Best Practices
+
+1. **Pagination**
+   - All list operations must support pagination through Paging 3
+   - Use Room's PagingSource for local data
+   - Implement RemoteMediator for network + local caching
+   - Default page size: 20 items, max size: 100 items
+   - Cache invalidation strategies for search and category results
+
+2. **Response Models**
+   ```kotlin
+   @JsonClass(generateAdapter = true)
+   data class BookSearchResponse(
+       @Json(name = "items") val items: List<BookDto>,
+       @Json(name = "total") val total: Int,
+       @Json(name = "page") val page: Int,
+       @Json(name = "pageSize") val pageSize: Int,
+       @Json(name = "hasMore") val hasMore: Boolean
+   )
+
+   @JsonClass(generateAdapter = true)
+   data class BookDetailsResponse(
+       @Json(name = "book") val book: BookDto,
+       @Json(name = "averageRating") val averageRating: Float?,
+       @Json(name = "ratingsCount") val ratingsCount: Int?,
+       @Json(name = "reviews") val reviews: List<ReviewDto>?,
+       @Json(name = "relatedBooks") val relatedBooks: List<BookDto>?
+   )
+   ```
+
+3. **Database Schema**
+   ```kotlin
    @Entity(tableName = "books")
    data class BookEntity(
        @PrimaryKey val id: String,
        val title: String,
        val author: String,
-       val description: String? = null,
-       val coverUrl: String? = null,
-       val isbn: String? = null,
-       val pageCount: Int? = null,
-       val publishedDate: String? = null,
-       val publisher: String? = null,
-       val categories: List<String> = emptyList(),
-       val category: String? = null,
-       val language: String? = null,
-       val averageRating: Float = 0f,
-       val ratingsCount: Int = 0,
+       val description: String?,
+       val coverUrl: String?,
+       val isbn: String?,
+       val pageCount: Int?,
+       val publishedDate: String?,
+       val publisher: String?,
+       @TypeConverters(StringListConverter::class)
+       val categories: List<String>,
+       val language: String?,
+       val averageRating: Float?,
+       val ratingsCount: Int?,
        val createdAt: Long = System.currentTimeMillis(),
        val updatedAt: Long = System.currentTimeMillis()
    )
@@ -193,68 +210,71 @@ Earn Achievements -> Complete Challenge
                childColumns = ["bookId"],
                onDelete = ForeignKey.CASCADE
            )
+       ],
+       indices = [
+           Index(value = ["userId"]),
+           Index(value = ["bookId"]),
+           Index(value = ["readingStatus"])
        ]
    )
    data class UserBookEntity(
        val userId: String,
        val bookId: String,
-       val status: ReadingStatus,
+       val readingStatus: ReadingStatus,
        val currentPage: Int = 0,
        val totalPages: Int,
        val startDate: Long? = null,
        val finishDate: Long? = null,
        val rating: Float? = null,
        val review: String? = null,
-       val notes: String? = null
+       val notes: String? = null,
+       val createdAt: Long = System.currentTimeMillis(),
+       val updatedAt: Long = System.currentTimeMillis()
+   )
+
+   @Entity(tableName = "remote_keys")
+   data class RemoteKey(
+       @PrimaryKey val bookId: String,
+       val prevKey: Int?,
+       val nextKey: Int?,
+       val query: String?,
+       val category: String?
    )
    ```
 
-2. **Repository Pattern**
+4. **Error Handling**
    ```kotlin
-   class BookRepository @Inject constructor(
-       private val localDataSource: LocalBookDataSource,
-       private val remoteDataSource: RemoteBookDataSource,
-       private val bookDb: BookTalkDatabase
-   ) {
-       // Book Discovery
+   sealed class NetworkResult<T> {
+       data class Success<T>(val data: T) : NetworkResult<T>()
+       data class Error<T>(val message: String) : NetworkResult<T>()
+       class Loading<T> : NetworkResult<T>()
+   }
+   ```
+
+5. **Repository Pattern**
+   ```kotlin
+   interface BookRepository {
+       // Book Discovery (with Paging)
        fun searchBooks(query: String): Flow<PagingData<Book>>
-       fun getRecommendedBooks(): Flow<PagingData<Book>>
        fun getBooksByCategory(category: String): Flow<PagingData<Book>>
        
-       // Reading List Management
-       suspend fun addToReadingList(bookId: String, status: ReadingStatus)
-       suspend fun updateReadingProgress(bookId: String, progress: Int)
-       fun getReadingList(): Flow<List<UserBook>>
-       
        // Book Details
-       suspend fun getBookDetails(id: String): Book?
-       suspend fun rateBook(bookId: String, rating: Float)
-       suspend fun reviewBook(bookId: String, review: String)
+       suspend fun getBookById(id: String): Flow<NetworkResult<Book>>
+       suspend fun getBookByIsbn(isbn: String): Flow<NetworkResult<Book>>
+       
+       // Reading List Management
+       fun getUserBooks(userId: String): Flow<List<Book>>
+       fun getUserBooksByStatus(userId: String, status: ReadingStatus): Flow<List<Book>>
+       suspend fun insertUserBook(userId: String, book: Book, status: ReadingStatus)
+       suspend fun updateUserBook(userId: String, book: Book)
+       suspend fun deleteUserBook(userId: String, bookId: String)
+       
+       // Book Interaction
+       suspend fun rateBook(userId: String, bookId: String, rating: Float)
+       suspend fun reviewBook(userId: String, bookId: String, review: String)
+       suspend fun updateReadingProgress(userId: String, bookId: String, currentPage: Int, totalPages: Int)
    }
    ```
-
-3. **Network Layer**
-   ```kotlin
-   interface BookApiService {
-       @GET("books/search")
-       suspend fun searchBooks(
-           @Query("q") query: String,
-           @Query("page") page: Int
-       ): Response<BookSearchResponse>
-
-       @GET("books/{id}")
-       suspend fun getBookDetails(
-           @Path("id") id: String
-       ): Response<BookDetailsResponse>
-   }
-   ```
-
-4. **Security**
-   - JWT-based authentication (implemented)
-   - Access token and refresh token mechanism (implemented)
-   - Secure storage for tokens (implemented)
-   - Certificate pinning for release builds
-   - Mock server for debug builds
 
 ## Staged Implementation Guide
 

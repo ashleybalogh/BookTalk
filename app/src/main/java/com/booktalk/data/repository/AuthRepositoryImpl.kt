@@ -99,7 +99,7 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override fun isAuthenticated(): Flow<Boolean> {
-        return MutableStateFlow(true).map { secureStorage.getToken() != null }
+        return MutableStateFlow(secureStorage.getToken() != null)
     }
 
     override suspend fun resetPassword(email: String): AuthResult<Unit> {

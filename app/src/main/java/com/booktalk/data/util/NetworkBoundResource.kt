@@ -32,7 +32,7 @@ abstract class NetworkBoundResource<ResultType> {
             } catch (e: Exception) {
                 // On error, emit the error if we don't have local data
                 if (localData == null) {
-                    emit(NetworkResult.error(e, e.message))
+                    emit(NetworkResult.error(e.message ?: "Unknown error occurred"))
                 }
                 // If we have local data, keep emitting it despite the network error
                 else {

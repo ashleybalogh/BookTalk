@@ -2,7 +2,6 @@ package com.booktalk.data.local.migrations
 
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.booktalk.domain.model.book.ReadingStatus
 
 /**
  * Migration from database version 1 to 2.
@@ -18,8 +17,8 @@ object Migration1to2 : Migration(1, 2) {
                 userId TEXT NOT NULL,
                 bookId TEXT NOT NULL,
                 status TEXT NOT NULL,
-                currentPage INTEGER NOT NULL,
-                totalPages INTEGER NOT NULL,
+                currentPage INTEGER NOT NULL DEFAULT 0,
+                totalPages INTEGER NOT NULL DEFAULT 0,
                 startDate INTEGER,
                 finishDate INTEGER,
                 rating REAL,
@@ -40,15 +39,15 @@ object Migration1to2 : Migration(1, 2) {
                 bookId,
                 CASE status
                     WHEN 'NOT_STARTED' THEN 'WANT_TO_READ'
-                    WHEN 'IN_PROGRESS' THEN 'IN_PROGRESS'
-                    WHEN 'CURRENTLY_READING' THEN 'IN_PROGRESS'
-                    WHEN 'FINISHED' THEN 'FINISHED'
-                    WHEN 'READ' THEN 'FINISHED'
-                    WHEN 'DNF' THEN 'DNF'
+                    WHEN 'IN_PROGRESS' THEN 'CURRENTLY_READING'
+                    WHEN 'CURRENTLY_READING' THEN 'CURRENTLY_READING'
+                    WHEN 'FINISHED' THEN 'READ'
+                    WHEN 'READ' THEN 'READ'
+                    WHEN 'DNF' THEN 'DID_NOT_FINISH'
                     ELSE 'WANT_TO_READ'
                 END as status,
-                currentPage,
-                totalPages,
+                COALESCE(currentPage, 0),
+                COALESCE(totalPages, 0),
                 startDate,
                 finishDate,
                 rating,
@@ -59,13 +58,8 @@ object Migration1to2 : Migration(1, 2) {
             FROM user_books
         """)
 
-        // Drop old table
+        // Drop old table and rename temp table
         database.execSQL("DROP TABLE user_books")
-
-        // Rename temp table to final table
         database.execSQL("ALTER TABLE user_books_temp RENAME TO user_books")
-
-        // Recreate the index
-        database.execSQL("CREATE INDEX IF NOT EXISTS index_user_books_bookId ON user_books(bookId)")
     }
 }

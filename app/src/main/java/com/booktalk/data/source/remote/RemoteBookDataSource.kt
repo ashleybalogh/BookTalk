@@ -1,96 +1,125 @@
 package com.booktalk.data.source.remote
 
-import com.booktalk.data.remote.api.BookApi
-import com.booktalk.data.remote.api.BookSearchResponse
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import com.booktalk.data.remote.api.BookService
 import com.booktalk.data.mapper.toBook
+import com.booktalk.data.paging.BookSearchPagingSource
+import com.booktalk.data.paging.CategoryBooksPagingSource
 import com.booktalk.data.source.BookDataSource
 import com.booktalk.domain.model.book.Book
-import com.booktalk.domain.util.NetworkResult
-import com.booktalk.data.remote.util.toNetworkResult
-import com.booktalk.data.remote.model.BookDto
-import retrofit2.Response
+import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
 class RemoteBookDataSource @Inject constructor(
-    private val bookApi: BookApi
+    private val bookService: BookService
 ) : BookDataSource {
+
+    companion object {
+        private const val PAGE_SIZE = 20
+        private const val PREFETCH_DISTANCE = 3
+        private const val MAX_SIZE = 100
+    }
+
+    override suspend fun getAllBooks(): List<Book> {
+        return searchBooks("")
+    }
+
     override suspend fun searchBooks(query: String): List<Book> {
-        val response = bookApi.searchBooks(query)
-        return when (val result = response.toNetworkResult()) {
-            is NetworkResult.Success -> result.data.items?.map { it.toBook() } ?: emptyList()
-            is NetworkResult.Error -> throw Exception(result.message ?: "Failed to search books")
-            is NetworkResult.Loading -> emptyList()
+        return try {
+            val response = bookService.searchBooks(query, page = 1, pageSize = PAGE_SIZE)
+            if (response.isSuccessful && response.body() != null) {
+                response.body()?.items?.map { it.toBook() } ?: emptyList()
+            } else {
+                throw Exception(response.errorBody()?.string() ?: "Failed to search books")
+            }
+        } catch (e: Exception) {
+            throw Exception("Network error: ${e.message}")
         }
     }
 
-    override suspend fun getBookById(id: String): Book {
-        val response = bookApi.getBookById(id)
-        return when (val result = response.toNetworkResult()) {
-            is NetworkResult.Success -> result.data.toBook()
-            is NetworkResult.Error -> throw Exception(result.message ?: "Failed to get book")
-            is NetworkResult.Loading -> throw Exception("Loading state not expected")
+    override fun getSearchBooksPagingFlow(query: String): Flow<PagingData<Book>> {
+        return Pager(
+            config = PagingConfig(
+                pageSize = PAGE_SIZE,
+                prefetchDistance = PREFETCH_DISTANCE,
+                maxSize = MAX_SIZE,
+                enablePlaceholders = false
+            ),
+            pagingSourceFactory = { BookSearchPagingSource(bookService, query) }
+        ).flow
+    }
+
+    override fun getCategoryBooksPagingFlow(category: String): Flow<PagingData<Book>> {
+        return Pager(
+            config = PagingConfig(
+                pageSize = PAGE_SIZE,
+                prefetchDistance = PREFETCH_DISTANCE,
+                maxSize = MAX_SIZE,
+                enablePlaceholders = false
+            ),
+            pagingSourceFactory = { CategoryBooksPagingSource(bookService, category) }
+        ).flow
+    }
+
+    override suspend fun getBookById(id: String): Book? {
+        return try {
+            val response = bookService.getBookById(id)
+            if (response.isSuccessful && response.body() != null) {
+                response.body()?.book?.toBook()
+            } else {
+                throw Exception(response.errorBody()?.string() ?: "Failed to get book by ID")
+            }
+        } catch (e: Exception) {
+            throw Exception("Network error: ${e.message}")
+        }
+    }
+
+    override suspend fun getBookByIsbn(isbn: String): Book? {
+        return try {
+            val response = bookService.getBookByIsbn(isbn)
+            if (response.isSuccessful && response.body() != null) {
+                response.body()?.book?.toBook()
+            } else {
+                throw Exception(response.errorBody()?.string() ?: "Failed to get book by ISBN")
+            }
+        } catch (e: Exception) {
+            throw Exception("Network error: ${e.message}")
         }
     }
 
     override suspend fun getBooksByCategory(category: String): List<Book> {
-        val response = bookApi.getBooksByCategory(category = category)
-        return when (val result = response.toNetworkResult()) {
-            is NetworkResult.Success -> result.data.items?.map { it.toBook() } ?: emptyList()
-            is NetworkResult.Error -> throw Exception(result.message ?: "Failed to get books by category")
-            is NetworkResult.Loading -> emptyList()
+        return try {
+            val response = bookService.getBooksByCategory(category, page = 1, pageSize = PAGE_SIZE)
+            if (response.isSuccessful && response.body() != null) {
+                response.body()?.items?.map { it.toBook() } ?: emptyList()
+            } else {
+                throw Exception(response.errorBody()?.string() ?: "Failed to get books by category")
+            }
+        } catch (e: Exception) {
+            throw Exception("Network error: ${e.message}")
         }
     }
 
     override suspend fun getRecommendedBooks(userId: String): List<Book> {
-        val response = bookApi.getRecommendedBooks()
-        return when (val result = response.toNetworkResult()) {
-            is NetworkResult.Success -> result.data.items?.map { it.toBook() } ?: emptyList()
-            is NetworkResult.Error -> throw Exception(result.message ?: "Failed to get recommended books")
-            is NetworkResult.Loading -> emptyList()
+        return try {
+            val response = bookService.getRecommendedBooks(userId, 1)
+            if (response.isSuccessful) {
+                response.body()?.items?.map { it.toBook() } ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
         }
-    }
-
-    override suspend fun getAllBooks(): List<Book> {
-        val response = bookApi.getAllBooks()
-        return when (val result = response.toNetworkResult()) {
-            is NetworkResult.Success -> result.data.items?.map { it.toBook() } ?: emptyList()
-            is NetworkResult.Error -> throw Exception(result.message ?: "Failed to get all books")
-            is NetworkResult.Loading -> emptyList()
-        }
-    }
-
-    override suspend fun saveBooks(books: List<Book>) {
-        // Remote data source doesn't handle local storage
-        throw UnsupportedOperationException("Remote data source doesn't support saving books")
     }
 
     override suspend fun saveBook(book: Book) {
-        // Remote data source doesn't handle local storage
-        throw UnsupportedOperationException("Remote data source doesn't support saving book")
+        // Remote data source doesn't implement saving
     }
 
-    override suspend fun deleteBook(book: Book) {
-        // Remote data source doesn't handle local storage
-        throw UnsupportedOperationException("Remote data source doesn't support deleting book")
-    }
-
-    override suspend fun updateBook(book: Book) {
-        // Remote data source doesn't handle local storage
-        throw UnsupportedOperationException("Remote data source doesn't support updating book")
-    }
-
-    override suspend fun getUpdatedAt(): Long {
-        return System.currentTimeMillis()
-    }
-
-    override suspend fun shouldRefreshCache(): Boolean {
-        return true 
-    }
-
-    override suspend fun setCacheExpiry(expiryTime: Long) {
-        // Remote data source doesn't handle caching
-        throw UnsupportedOperationException("Remote data source doesn't support setting cache expiry")
+    override suspend fun insertBooks(books: List<Book>) {
+        // Remote data source doesn't implement batch insert
     }
 }

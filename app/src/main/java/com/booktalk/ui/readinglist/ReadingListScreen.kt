@@ -13,6 +13,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.booktalk.ui.discovery.components.BookGrid
 import com.booktalk.ui.components.ErrorMessage
 import com.booktalk.ui.components.LoadingSpinner
+import com.booktalk.domain.model.book.Book
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,8 +71,7 @@ fun ReadingListScreen(
                 else -> {
                     BookGrid(
                         books = uiState.books,
-                        gridState = gridState,
-                        onBookClick = onBookClick,
+                        onBookClick = { book -> onBookClick(book.id ?: "") },
                         modifier = Modifier.fillMaxSize()
                     )
                 }

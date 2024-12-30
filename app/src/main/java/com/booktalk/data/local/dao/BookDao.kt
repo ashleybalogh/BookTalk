@@ -1,20 +1,64 @@
 package com.booktalk.data.local.dao
 
+import androidx.paging.PagingSource
 import androidx.room.*
 import com.booktalk.data.local.entity.BookEntity
-import com.booktalk.domain.model.book.ReadingStatus
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BookDao {
-    @Query("SELECT * FROM books")
-    fun getAllBooks(): List<BookEntity>
-
-    @Query("SELECT * FROM books")
+    @Query("SELECT * FROM books ORDER BY createdAt DESC")
     fun getAllBooksFlow(): Flow<List<BookEntity>>
 
-    @Query("SELECT * FROM books WHERE id = :bookId")
-    suspend fun getBookById(bookId: String): BookEntity?
+    @Query("SELECT * FROM books ORDER BY createdAt DESC")
+    suspend fun getAllBooks(): List<BookEntity>
+
+    @Query("SELECT * FROM books ORDER BY createdAt DESC")
+    fun getAllBooksPaging(): PagingSource<Int, BookEntity>
+
+    @Query("""
+        SELECT * FROM books 
+        WHERE title LIKE '%' || :query || '%' 
+        OR authors LIKE '%' || :query || '%'
+        OR isbn LIKE '%' || :query || '%'
+        ORDER BY 
+            CASE 
+                WHEN title LIKE :query || '%' THEN 1
+                WHEN authors LIKE :query || '%' THEN 2
+                ELSE 3
+            END,
+            CASE WHEN averageRating IS NULL THEN 0 ELSE averageRating END DESC,
+            ratingsCount DESC
+    """)
+    fun searchBooks(query: String): Flow<List<BookEntity>>
+
+    @Query("""
+        SELECT * FROM books 
+        WHERE title LIKE '%' || :query || '%' 
+        OR authors LIKE '%' || :query || '%'
+        OR isbn LIKE '%' || :query || '%'
+        ORDER BY 
+            CASE 
+                WHEN title LIKE :query || '%' THEN 1
+                WHEN authors LIKE :query || '%' THEN 2
+                ELSE 3
+            END,
+            CASE WHEN averageRating IS NULL THEN 0 ELSE averageRating END DESC,
+            ratingsCount DESC
+    """)
+    fun searchBooksPaging(query: String): PagingSource<Int, BookEntity>
+
+    @Query("SELECT * FROM books WHERE id = :id")
+    suspend fun getBookById(id: String): BookEntity?
+
+    @Query("SELECT * FROM books WHERE isbn = :isbn")
+    suspend fun getBookByIsbn(isbn: String): BookEntity?
+
+    @Query("SELECT * FROM books WHERE categories LIKE '%' || :category || '%' ORDER BY averageRating DESC, ratingsCount DESC")
+    fun getBooksByCategory(category: String): Flow<List<BookEntity>>
+
+    @Query("SELECT * FROM books WHERE categories LIKE '%' || :category || '%' ORDER BY averageRating DESC, ratingsCount DESC")
+    fun getBooksByCategoryPaging(category: String): PagingSource<Int, BookEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBook(book: BookEntity)
@@ -28,92 +72,12 @@ interface BookDao {
     @Delete
     suspend fun deleteBook(book: BookEntity)
 
-    @Query("""
-        SELECT * FROM books 
-        WHERE LOWER(title) LIKE '%' || LOWER(:query) || '%' 
-        OR EXISTS (
-            SELECT 1 FROM json_each(authors) 
-            WHERE LOWER(value) LIKE '%' || LOWER(:query) || '%'
-        )
-        OR LOWER(description) LIKE '%' || LOWER(:query) || '%'
-        OR EXISTS (
-            SELECT 1 FROM json_each(keywords) 
-            WHERE LOWER(value) LIKE '%' || LOWER(:query) || '%'
-        )
-        ORDER BY 
-            CASE 
-                WHEN LOWER(title) LIKE LOWER(:query) || '%' THEN 1
-                WHEN EXISTS (
-                    SELECT 1 FROM json_each(authors) 
-                    WHERE LOWER(value) LIKE LOWER(:query) || '%'
-                ) THEN 2
-                ELSE 3
-            END,
-            popularity DESC,
-            averageRating DESC
-    """)
-    fun searchBooks(query: String): Flow<List<BookEntity>>
+    @Query("DELETE FROM books")
+    suspend fun deleteAllBooks()
 
-    @Query("""
-        SELECT * FROM books 
-        WHERE EXISTS (
-            SELECT 1 FROM json_each(categories) 
-            WHERE value = :category
-        )
-        ORDER BY popularity DESC, averageRating DESC
-    """)
-    fun getBooksByCategory(category: String): Flow<List<BookEntity>>
+    @Query("DELETE FROM books WHERE title LIKE '%' || :query || '%' OR authors LIKE '%' || :query || '%'")
+    suspend fun deleteBooksByQuery(query: String)
 
-    @Query("SELECT * FROM books WHERE status = :status")
-    fun getBooksByStatus(status: ReadingStatus): Flow<List<BookEntity>>
-
-    @Query("SELECT * FROM books WHERE status IN (:statuses)")
-    fun getBooksByStatuses(statuses: List<ReadingStatus>): Flow<List<BookEntity>>
-
-    @Query("SELECT COUNT(*) FROM books WHERE status = :status")
-    fun getBookCountByStatus(status: ReadingStatus): Flow<Int>
-
-    @Query("""
-        SELECT * FROM books
-        WHERE popularity > 0
-        ORDER BY popularity DESC, averageRating DESC
-        LIMIT 20
-    """)
-    fun getPopularBooks(): Flow<List<BookEntity>>
-
-    @Query("""
-        SELECT * FROM books
-        WHERE id IN (
-            SELECT json_each.value
-            FROM books, json_each(books.similarBooks)
-            WHERE books.id = :bookId
-        )
-    """)
-    fun getSimilarBooks(bookId: String): Flow<List<BookEntity>>
-
-    @Query("""
-        SELECT * FROM books
-        WHERE id IN (
-            SELECT DISTINCT b.id
-            FROM books b
-            INNER JOIN (
-                SELECT category
-                FROM (
-                    SELECT json_each.value as category
-                    FROM books, json_each(books.categories)
-                    WHERE books.id = :userId
-                )
-            ) user_categories
-            INNER JOIN (
-                SELECT b2.id, json_each.value as category
-                FROM books b2, json_each(b2.categories)
-            ) book_categories
-            ON user_categories.category = book_categories.category
-            WHERE b.id = book_categories.id
-            AND b.id != :userId
-        )
-        ORDER BY popularity DESC, averageRating DESC
-        LIMIT 20
-    """)
-    fun getRecommendedBooks(userId: String): Flow<List<BookEntity>>
+    @Query("DELETE FROM books WHERE categories LIKE '%' || :category || '%'")
+    suspend fun deleteBooksByCategory(category: String)
 }

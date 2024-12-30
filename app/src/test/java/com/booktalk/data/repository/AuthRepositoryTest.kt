@@ -1,177 +1,149 @@
 package com.booktalk.data.repository
 
-import com.booktalk.data.local.secure.SecureStorage
-import com.booktalk.data.remote.api.AuthApiService
-import com.booktalk.data.remote.dto.auth.AuthResponse
-import com.booktalk.data.remote.dto.auth.LoginRequest
-import com.booktalk.data.remote.dto.auth.UserResponse
-import com.booktalk.domain.model.auth.AuthResult
-import io.mockk.*
+import com.booktalk.data.local.TokenManager
+import com.booktalk.data.model.AuthResponse
+import com.booktalk.data.model.UserResponse
+import com.booktalk.data.remote.api.AuthService
+import com.booktalk.domain.model.NetworkResult
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import retrofit2.Response
 
 class AuthRepositoryTest {
-    private lateinit var authApiService: AuthApiService
-    private lateinit var secureStorage: SecureStorage
+    private lateinit var authService: AuthService
+    private lateinit var tokenManager: TokenManager
     private lateinit var repository: AuthRepositoryImpl
 
     @Before
     fun setup() {
-        authApiService = mockk()
-        secureStorage = mockk()
-        repository = AuthRepositoryImpl(authApiService, secureStorage)
+        authService = mockk()
+        tokenManager = mockk(relaxed = true)
+        repository = AuthRepositoryImpl(authService, tokenManager)
     }
 
     @Test
     fun `signInWithEmail returns success with user when API call succeeds`() = runTest {
-        // Given
         val email = "test@example.com"
         val password = "password123"
         val authResponse = createAuthResponse()
         val userResponse = createUserResponse()
-        
-        coEvery { authApiService.login(LoginRequest(email, password)) } returns Response.success(authResponse)
-        coEvery { authApiService.getCurrentUser("Bearer ${authResponse.token}") } returns Response.success(userResponse)
-        coEvery { secureStorage.saveToken(any()) } just Runs
-        coEvery { secureStorage.saveRefreshToken(any()) } just Runs
-        coEvery { secureStorage.saveUserId(any()) } just Runs
-        coEvery { secureStorage.getToken() } returns authResponse.token
 
-        // When
-        val result = repository.signInWithEmail(email, password)
+        coEvery {
+            authService.signInWithEmail(any())
+        } returns Response.success(authResponse)
 
-        // Then
-        assertTrue(result is AuthResult.Success)
-        assertNotNull((result as AuthResult.Success).data)
-        assertEquals(userResponse.id, result.data?.id)
-        coVerify { 
-            secureStorage.saveToken(authResponse.token)
-            secureStorage.saveRefreshToken(authResponse.refreshToken)
-            secureStorage.saveUserId(authResponse.userId)
-        }
+        coEvery {
+            authService.getUser()
+        } returns Response.success(userResponse)
+
+        val result = repository.signInWithEmail(email, password).first()
+
+        assertTrue(result is NetworkResult.Success)
+        assertEquals(userResponse.toUser(), (result as NetworkResult.Success).data)
+        coVerify { tokenManager.saveTokens(authResponse.accessToken, authResponse.refreshToken) }
     }
 
     @Test
     fun `signInWithEmail returns error when API call fails`() = runTest {
-        // Given
         val email = "test@example.com"
         val password = "password123"
-        coEvery { authApiService.login(LoginRequest(email, password)) } returns Response.error(
-            401,
-            okhttp3.ResponseBody.create(null, "Invalid credentials")
-        )
 
-        // When
-        val result = repository.signInWithEmail(email, password)
+        coEvery {
+            authService.signInWithEmail(any())
+        } throws Exception("Network error")
 
-        // Then
-        assertTrue(result is AuthResult.Error)
-        assertNotNull((result as AuthResult.Error).message)
+        val result = repository.signInWithEmail(email, password).first()
+
+        assertTrue(result is NetworkResult.Error)
+        assertEquals("Network error", (result as NetworkResult.Error).message)
     }
 
     @Test
     fun `signOut clears tokens even when API call fails`() = runTest {
-        // Given
-        coEvery { secureStorage.getToken() } returns "token"
-        coEvery { authApiService.logout(any()) } throws Exception("Network error")
-        coEvery { secureStorage.clearAll() } just Runs
+        coEvery {
+            authService.signOut()
+        } throws Exception("Network error")
 
-        // When
         repository.signOut()
 
-        // Then
-        coVerify { secureStorage.clearAll() }
+        coVerify { tokenManager.clearTokens() }
     }
 
     @Test
     fun `isAuthenticated emits true when access token exists`() = runTest {
-        // Given
-        coEvery { secureStorage.getToken() } returns "valid_token"
+        coEvery {
+            tokenManager.getAccessToken()
+        } returns "valid_token"
 
-        // When
-        val isAuthenticated = repository.isAuthenticated().first()
+        val result = repository.isAuthenticated().first()
 
-        // Then
-        assertTrue(isAuthenticated)
+        assertTrue(result)
     }
 
     @Test
     fun `isAuthenticated emits false when access token is null`() = runTest {
-        // Given
-        coEvery { secureStorage.getToken() } returns null
+        coEvery {
+            tokenManager.getAccessToken()
+        } returns null
 
-        // When
-        val isAuthenticated = repository.isAuthenticated().first()
+        val result = repository.isAuthenticated().first()
 
-        // Then
-        assertFalse(isAuthenticated)
+        assertFalse(result)
     }
 
     @Test
     fun `refreshToken updates tokens when successful`() = runTest {
-        // Given
-        val refreshToken = "old_refresh_token"
         val authResponse = createAuthResponse()
-        val userResponse = createUserResponse()
-        
-        coEvery { secureStorage.getRefreshToken() } returns refreshToken
-        coEvery { authApiService.refreshToken("Bearer $refreshToken") } returns Response.success(authResponse)
-        coEvery { authApiService.getCurrentUser("Bearer ${authResponse.token}") } returns Response.success(userResponse)
-        coEvery { secureStorage.saveToken(any()) } just Runs
-        coEvery { secureStorage.saveRefreshToken(any()) } just Runs
-        coEvery { secureStorage.saveUserId(any()) } just Runs
-        coEvery { secureStorage.getToken() } returns authResponse.token
 
-        // When
-        val result = repository.refreshToken()
+        coEvery {
+            tokenManager.getRefreshToken()
+        } returns "old_refresh_token"
 
-        // Then
-        assertTrue(result is AuthResult.Success)
-        coVerify { 
-            secureStorage.saveToken(authResponse.token)
-            secureStorage.saveRefreshToken(authResponse.refreshToken)
-            secureStorage.saveUserId(authResponse.userId)
-        }
+        coEvery {
+            authService.refreshToken(any())
+        } returns Response.success(authResponse)
+
+        val result = repository.refreshToken().first()
+
+        assertTrue(result is NetworkResult.Success)
+        coVerify { tokenManager.saveTokens(authResponse.accessToken, authResponse.refreshToken) }
     }
 
     @Test
     fun `refreshToken clears tokens when refresh fails`() = runTest {
-        // Given
-        val refreshToken = "old_refresh_token"
-        coEvery { secureStorage.getRefreshToken() } returns refreshToken
-        coEvery { authApiService.refreshToken("Bearer $refreshToken") } returns Response.error(
-            401,
-            okhttp3.ResponseBody.create(null, "Invalid refresh token")
-        )
-        coEvery { secureStorage.clearAll() } just Runs
+        coEvery {
+            tokenManager.getRefreshToken()
+        } returns "old_refresh_token"
 
-        // When
-        val result = repository.refreshToken()
+        coEvery {
+            authService.refreshToken(any())
+        } throws Exception("Refresh failed")
 
-        // Then
-        assertTrue(result is AuthResult.Error)
-        coVerify { secureStorage.clearAll() }
+        val result = repository.refreshToken().first()
+
+        assertTrue(result is NetworkResult.Error)
+        coVerify { tokenManager.clearTokens() }
     }
 
     private fun createAuthResponse() = AuthResponse(
-        userId = "1",
-        token = "access_token",
+        accessToken = "access_token",
         refreshToken = "refresh_token",
-        expiresIn = 3600L
+        expiresIn = 3600
     )
 
     private fun createUserResponse() = UserResponse(
-        id = "1",
+        id = "user_id",
         email = "test@example.com",
-        displayName = "Test User",
-        photoUrl = "https://example.com/photo.jpg",
-        emailVerified = true,
+        name = "Test User",
         createdAt = System.currentTimeMillis(),
-        lastLoginAt = System.currentTimeMillis()
+        updatedAt = System.currentTimeMillis()
     )
 }

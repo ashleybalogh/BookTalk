@@ -2,23 +2,16 @@ package com.booktalk.ui.discovery
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import com.booktalk.domain.model.book.Book
 import com.booktalk.domain.repository.BookRepository
 import com.booktalk.domain.util.NetworkResult
+import com.booktalk.ui.discovery.BookDiscoveryUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-data class BookDiscoveryUiState(
-    val searchQuery: String = "",
-    val selectedCategory: String? = null,
-    val searchResults: List<Book> = emptyList(),
-    val popularBooks: List<Book> = emptyList(),
-    val categoryBooks: List<Book> = emptyList(),
-    val isLoading: Boolean = false,
-    val error: String? = null
-)
 
 @HiltViewModel
 class BookDiscoveryViewModel @Inject constructor(
@@ -28,148 +21,75 @@ class BookDiscoveryViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(BookDiscoveryUiState())
     val uiState: StateFlow<BookDiscoveryUiState> = _uiState.asStateFlow()
 
-    init {
-        loadPopularBooks()
-    }
+    private val _searchResults = MutableStateFlow<PagingData<Book>>(PagingData.empty())
+    val searchResults: StateFlow<PagingData<Book>> = _searchResults.asStateFlow()
 
-    private fun loadPopularBooks() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            bookRepository.getBooksByCategory("popular").collect { result: NetworkResult<List<Book>> ->
-                when (result) {
-                    is NetworkResult.Success -> {
-                        _uiState.update { 
-                            it.copy(
-                                popularBooks = result.data,
-                                isLoading = false,
-                                error = null
-                            )
-                        }
-                    }
-                    is NetworkResult.Error -> {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                error = result.message ?: "Failed to load popular books"
-                            )
-                        }
-                    }
-                    is NetworkResult.Loading -> {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = true,
-                                error = null
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
+    private val _categoryBooks = MutableStateFlow<PagingData<Book>>(PagingData.empty())
+    val categoryBooks: StateFlow<PagingData<Book>> = _categoryBooks.asStateFlow()
 
     fun onSearchQueryChange(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
-        searchBooks(query)
+        if (query.isNotBlank()) {
+            searchBooks(query)
+        } else {
+            _searchResults.value = PagingData.empty()
+        }
     }
 
     private fun searchBooks(query: String) {
-        if (query.isBlank()) {
-            _uiState.update { it.copy(searchResults = emptyList()) }
-            return
-        }
-
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            bookRepository.searchBooks(query).collect { result: NetworkResult<List<Book>> ->
-                when (result) {
-                    is NetworkResult.Success -> {
-                        _uiState.update { 
-                            it.copy(
-                                searchResults = result.data,
-                                isLoading = false,
-                                error = null
-                            )
-                        }
+            try {
+                bookRepository.getSearchBooksPagingFlow(query)
+                    .cachedIn(viewModelScope)
+                    .collect { pagingData ->
+                        _searchResults.value = pagingData
+                        _uiState.update { it.copy(isLoading = false) }
                     }
-                    is NetworkResult.Error -> {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                error = result.message ?: "Failed to search books"
-                            )
-                        }
-                    }
-                    is NetworkResult.Loading -> {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = true,
-                                error = null
-                            )
-                        }
-                    }
-                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(
+                    isLoading = false,
+                    error = e.message
+                ) }
             }
         }
     }
 
-    fun onCategorySelected(category: String) {
+    fun onCategorySelected(category: String?) {
         _uiState.update { it.copy(selectedCategory = category) }
-        selectCategory(category)
+        if (category != null) {
+            loadCategoryBooks(category)
+        } else {
+            _categoryBooks.value = PagingData.empty()
+        }
     }
 
-    private fun selectCategory(category: String?) {
-        if (category == null) {
-            _uiState.update { it.copy(categoryBooks = emptyList()) }
-            return
-        }
-
+    private fun loadCategoryBooks(category: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            bookRepository.getBooksByCategory(category).collect { result: NetworkResult<List<Book>> ->
-                when (result) {
-                    is NetworkResult.Success -> {
-                        _uiState.update { 
-                            it.copy(
-                                categoryBooks = result.data,
-                                isLoading = false,
-                                error = null
-                            )
-                        }
+            try {
+                bookRepository.getCategoryBooksPagingFlow(category)
+                    .cachedIn(viewModelScope)
+                    .collect { pagingData ->
+                        _categoryBooks.value = pagingData
+                        _uiState.update { it.copy(isLoading = false) }
                     }
-                    is NetworkResult.Error -> {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                error = result.message ?: "Failed to load books for category"
-                            )
-                        }
-                    }
-                    is NetworkResult.Loading -> {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = true,
-                                error = null
-                            )
-                        }
-                    }
-                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(
+                    isLoading = false,
+                    error = e.message
+                ) }
             }
         }
     }
 
     fun clearSearch() {
-        _uiState.update { it.copy(
-            searchQuery = "",
-            searchResults = emptyList()
-        )}
-        loadPopularBooks()
+        _uiState.update { it.copy(searchQuery = "") }
+        _searchResults.value = PagingData.empty()
     }
 
     fun clearCategory() {
-        _uiState.update { it.copy(
-            selectedCategory = null,
-            categoryBooks = emptyList()
-        )}
-        loadPopularBooks()
+        _uiState.update { it.copy(selectedCategory = null) }
+        _categoryBooks.value = PagingData.empty()
     }
 }

@@ -33,8 +33,8 @@ interface AuthApiService {
         @Body newPassword: String
     ): Response<Unit>
 
-    @POST("auth/email/verify")
-    suspend fun sendEmailVerification(@Header("Authorization") token: String): Response<Unit>
+    @POST("auth/password/verify")
+    suspend fun verifyPasswordResetCode(@Body code: String): Response<Unit>
 
     @PUT("auth/profile")
     suspend fun updateProfile(
@@ -42,4 +42,17 @@ interface AuthApiService {
         @Body displayName: String?,
         @Body photoUrl: String?
     ): Response<UserResponse>
+
+    @PUT("auth/email")
+    suspend fun updateEmail(
+        @Header("Authorization") token: String,
+        @Body newEmail: String,
+        @Body password: String
+    ): Response<Unit>
+
+    @POST("auth/email/verify")
+    suspend fun sendEmailVerification(@Header("Authorization") token: String): Response<Unit>
+
+    @DELETE("auth/account")
+    suspend fun deleteAccount(@Header("Authorization") token: String): Response<Unit>
 }

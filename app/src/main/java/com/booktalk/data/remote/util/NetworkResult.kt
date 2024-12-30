@@ -16,14 +16,12 @@ fun <T> Response<T>.toNetworkResult(): NetworkResult<T> {
             NetworkResult.success(body()!!)
         } else {
             NetworkResult.error(
-                error = ApiException(code(), message()),
-                message = message()
+                message = message() ?: "Unknown error occurred"
             )
         }
     } catch (e: Exception) {
         NetworkResult.error(
-            error = e,
-            message = e.message
+            message = e.message ?: "Unknown error occurred"
         )
     }
 }
@@ -33,8 +31,7 @@ fun <T> Response<T>.toNetworkResult(): NetworkResult<T> {
  */
 fun <T> Exception.toNetworkResult(): NetworkResult<T> {
     return NetworkResult.error(
-        error = this,
-        message = message
+        message = message ?: "Unknown error occurred"
     )
 }
 

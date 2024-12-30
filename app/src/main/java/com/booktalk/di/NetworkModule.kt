@@ -3,7 +3,8 @@ package com.booktalk.di
 import android.content.Context
 import com.booktalk.BuildConfig
 import com.booktalk.data.local.TokenManager
-import com.booktalk.data.remote.api.BookApi
+import com.booktalk.data.remote.api.BookService
+import com.booktalk.data.remote.api.AuthApiService
 import com.booktalk.data.remote.interceptor.AuthInterceptor
 import com.booktalk.data.remote.interceptor.CacheInterceptor
 import com.booktalk.data.remote.interceptor.LoggingInterceptor
@@ -18,7 +19,7 @@ import okhttp3.Cache
 import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.converter.moshi.MoshiConverterFactory
 import java.io.File
 import java.util.concurrent.TimeUnit
 import javax.inject.Qualifier
@@ -27,10 +28,6 @@ import javax.inject.Singleton
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class AuthOkHttpClient
-
-@Qualifier
-@Retention(AnnotationRetention.BINARY)
-annotation class BooksOkHttpClient
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -47,11 +44,9 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideCertificatePinner(): CertificatePinner {
-        return CertificatePinner.Builder().apply {
-            BuildConfig.SSL_PINS.forEach { pin ->
-                add(BuildConfig.API_BASE_URL, pin)
-            }
-        }.build()
+        return CertificatePinner.Builder()
+            .add(BuildConfig.API_HOST, *BuildConfig.SSL_PINS)
+            .build()
     }
 
     @Provides
@@ -63,7 +58,7 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideRateLimitInterceptor(): RateLimitInterceptor {
-        return RateLimitInterceptor(maxRequestsPerSecond = 5)
+        return RateLimitInterceptor()
     }
 
     @Provides
@@ -83,7 +78,7 @@ object NetworkModule {
     fun provideLoggingInterceptor(): LoggingInterceptor {
         return LoggingInterceptor()
     }
-    
+
     @Provides
     @Singleton
     @AuthOkHttpClient
@@ -112,8 +107,7 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    @BooksOkHttpClient
-    fun provideBooksOkHttpClient(
+    fun provideOkHttpClient(
         networkInterceptor: NetworkInterceptor,
         rateLimitInterceptor: RateLimitInterceptor,
         loggingInterceptor: LoggingInterceptor
@@ -130,12 +124,23 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideBookApi(@BooksOkHttpClient okHttpClient: OkHttpClient): BookApi {
+    fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
         return Retrofit.Builder()
-            .baseUrl("https://www.googleapis.com/books/v1/")
+            .baseUrl(BuildConfig.API_URL)
             .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(MoshiConverterFactory.create())
             .build()
-            .create(BookApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBookService(retrofit: Retrofit): BookService {
+        return retrofit.create(BookService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideAuthService(retrofit: Retrofit): AuthApiService {
+        return retrofit.create(AuthApiService::class.java)
     }
 }

@@ -6,6 +6,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.paging.compose.collectAsLazyPagingItems
 import com.booktalk.ui.discovery.components.*
 
 @Composable
@@ -14,6 +15,8 @@ fun BookDiscoveryScreen(
     onBookClick: (String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val searchResults = viewModel.searchResults.collectAsLazyPagingItems()
+    val categoryBooks = viewModel.categoryBooks.collectAsLazyPagingItems()
 
     Column(modifier = Modifier.fillMaxSize()) {
         SearchBar(
@@ -44,16 +47,16 @@ fun BookDiscoveryScreen(
         if (uiState.searchQuery.isNotEmpty()) {
             SectionHeader(title = "Search Results")
             BookGrid(
-                books = uiState.searchResults,
-                onBookClick = onBookClick,
+                books = searchResults.itemSnapshotList.items,
+                onBookClick = { book -> onBookClick(book.id!!) },
                 modifier = Modifier.fillMaxWidth()
             )
         } else {
             if (uiState.selectedCategory != null) {
                 SectionHeader(title = "${uiState.selectedCategory} Books")
                 BookGrid(
-                    books = uiState.categoryBooks,
-                    onBookClick = onBookClick,
+                    books = categoryBooks.itemSnapshotList.items,
+                    onBookClick = { book -> onBookClick(book.id!!) },
                     modifier = Modifier.fillMaxWidth()
                 )
             } else {
@@ -66,10 +69,10 @@ fun BookDiscoveryScreen(
                         .padding(horizontal = 16.dp)
                 )
 
-                SectionHeader(title = "Popular Books")
+                SectionHeader(title = "Recent Books")
                 BookGrid(
-                    books = uiState.popularBooks,
-                    onBookClick = onBookClick,
+                    books = emptyList(),
+                    onBookClick = { book -> onBookClick(book.id!!) },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
